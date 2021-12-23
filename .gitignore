@@ -1,0 +1,12 @@
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Binaries for programs and plugins
+backend/*.exe
+backend/*.exe~
+backend/*.dll
+backend/*.so
+backend/*.dylib
+backend/*.test
+backend/*.out
+backend/.env

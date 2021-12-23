@@ -1,0 +1,25 @@
+#App configuration file
+webserver:
+    port: ":8080"
+    tls: true # use secure connection with SSL certificate
+
+database:
+    host: "localhost"
+    database: "postgresql"
+    user: "root"
+    password: "password123"
+    port: 5432
+
+redis:
+    host: "localhost:20200"
+    password: "secret"
+    db: 0
+
+token:
+    secret: 22315678071634567890135456789012
+    token_lifetime: 5 # minutes
+    refresh_token_lifetime: 14400 # minutes (10 * 24 * 60)
+
+authentication:
+    signup_allowed: true
+    signup_approving: false
