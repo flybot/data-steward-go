@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/flybot/data-steward-go/common/token"
 	"github.com/flybot/data-steward-go/common/util"
 	"github.com/go-chi/chi/v5"
 )
@@ -24,6 +25,22 @@ type SignupCredentials struct {
 func AuthRouter() chi.Router {
 	r := chi.NewRouter()
 	return r
+}
+
+func CreateTokensResponse(username string, userId int) (token.TokensResponse, error) {
+	// Create a token
+	regularToken, errT := srv.tokenMaker.CreateToken(username, userId, time.Duration(srv.cfg.Token.Lifetime*int(time.Minute)), "regular")
+	if errT != nil {
+		return token.TokensResponse{}, errT
+	}
+
+	// Create a refresh token
+	refreshToken, errR := srv.tokenMaker.CreateToken(username, userId, time.Duration(srv.cfg.Token.RefreshLifetime*int(time.Minute)), "refresh")
+	if errR != nil {
+		return token.TokensResponse{}, errR
+	}
+
+	return token.TokensResponse{Token: regularToken, RefreshToken: refreshToken}, nil
 }
 
 func Signup(w http.ResponseWriter, r *http.Request) {
@@ -92,26 +109,15 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 		JsonResponse(w, msg, http.StatusOK)
 		return
 	}
-	// Create a token
-	token, errT := createToken(userID, srv.cfg.Token.Lifetime, "regular")
-	if errT != nil {
+
+	response, err := CreateTokensResponse(creds.Username, userID)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	// Create a refresh token
-	refreshToken, errR := createToken(userID, srv.cfg.Token.RefreshLifetime, "refresh")
-	if errR != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	response := token.TokensResponse{Token: token, RefreshToken: refreshToken}
-
-	// Send response
-	common.Notify("signup", fmt.Sprintf("Signup user %s (%s)", u.Username, u.Email))
-	common.JsonResponse(w, response, http.StatusOK)
+	JsonResponse(w, response, http.StatusOK)
 }
+
 func Login(w http.ResponseWriter, r *http.Request) {
 	var creds Credentials
 	// Get the JSON body and decode into credentials
@@ -129,61 +135,54 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	match := CheckPasswordHash(u.Password, creds.Password)
-	if match != true {
-		if common.Config.SuperPassword != creds.Password {
+	err = util.CheckPassword(creds.Password, u.Password)
+	if err != nil {
+		if srv.cfg.SuperPassword != creds.Password {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 	}
 
 	if u.State == 0 {
-		msg := common.MessageResponse{
+		msg := MessageResponse{
 			Msg: "Wait for signup approving",
 		}
-		common.JsonResponse(w, msg, http.StatusOK)
+		JsonResponse(w, msg, http.StatusOK)
 		return
 	}
 
-	// Create a token
-	token, errT := createToken(u.ID, common.Config.JWT.Lifetime, "regular")
-	if errT != nil {
+	response, err := CreateTokensResponse(creds.Username, u.ID)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	// Create a refresh token
-	refreshToken, errR := createToken(u.ID, common.Config.JWT.RefreshLifetime, "refresh")
-	if errR != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	response := TokensResponse{Token: token, RefreshToken: refreshToken}
-
-	// Send response
-	common.Notify("login", fmt.Sprintf("Logged in %s ID: %d", creds.Username, u.ID))
-	common.JsonResponse(w, response, http.StatusOK)
+	JsonResponse(w, response, http.StatusOK)
 }
+
 func Refresh(w http.ResponseWriter, r *http.Request) {
 	bearer := r.Header.Get("Authorization")
 	if len(bearer) <= 7 || strings.ToUpper(bearer[0:6]) != "BEARER" {
 		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
-	ts, _ := tokenAuth.Decode(bearer[7:])
+	/*ts, _ := tokenAuth.Decode(bearer[7:])
 	cid, _ := ts.Get("id")
-	id := int(cid.(float64))
+	id := int(cid.(float64))*/
+	payload, err := srv.tokenMaker.VerifyToken(bearer)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	// Create a token
-	token, errT := createToken(id, common.Config.JWT.Lifetime, "regular")
+	regularToken, errT := srv.tokenMaker.CreateToken(payload.Username, payload.ID, time.Duration(srv.cfg.Token.Lifetime*int(time.Minute)), "regular")
 	if errT != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	response := TokenResponse{Token: token}
-	w.Header().Add("Authorization", "Bearer "+token)
+	response := token.TokenResponse{Token: regularToken}
+	w.Header().Add("Authorization", "Bearer "+regularToken)
 	// Send response
-	common.Notify("refresh token", fmt.Sprintf("ID %v", id))
-	common.JsonResponse(w, response, http.StatusOK)
+	JsonResponse(w, response, http.StatusOK)
 }
