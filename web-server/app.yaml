@@ -17,7 +17,7 @@ redis:
 
 token:
     secret: 22315678071634567890135456789012
-    token_lifetime: 5 # minutes
+    token_lifetime: 1 # minutes
     refresh_token_lifetime: 14400 # minutes (10 * 24 * 60)
 
 authentication:

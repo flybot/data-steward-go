@@ -3,6 +3,7 @@ package token
 import (
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -46,6 +47,7 @@ func (maker *JWTMaker) VerifyToken(token string) (*Payload, error) {
 
 	jwtToken, err := jwt.ParseWithClaims(token, &Payload{}, keyFunc)
 	if err != nil {
+		log.Printf("%v", err)
 		verr, ok := err.(*jwt.ValidationError)
 		if ok && errors.Is(verr.Inner, ErrExpiredToken) {
 			return nil, ErrExpiredToken

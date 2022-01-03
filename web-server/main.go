@@ -66,6 +66,25 @@ func FileServer(r chi.Router, path string, root http.FileSystem) {
 	})
 }
 
+func CheckTokenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bearer := r.Header.Get("Authorization")
+		if len(bearer) <= 7 || strings.ToUpper(bearer[0:6]) != "BEARER" {
+			http.Error(w, http.StatusText(401), 401)
+			return
+		}
+
+		payload, err := srv.tokenMaker.VerifyToken(bearer[7:])
+		if err != nil {
+			http.Error(w, http.StatusText(401), 401)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "tokenPayload", payload)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func WebRouter() http.Handler {
 	router := chi.NewRouter()
 
@@ -94,6 +113,14 @@ func WebRouter() http.Handler {
 
 	router.Mount("/public", PublicRouter())
 	router.Mount("/auth", AuthRouter())
+
+	router.Group(func(r chi.Router) {
+		r.Use(CheckTokenMiddleware)
+
+		r.Post("/auth/refresh", Refresh)
+
+		r.Mount("/api/v1", ApiRouter())
+	})
 
 	// Set up static file serving
 	/*workDir, _ := os.Getwd()
@@ -136,11 +163,11 @@ func main() {
 	srv.db = database.InitPostgresql()
 	srv.db.Connect(srv.cfg.DB.Host, srv.cfg.DB.Port, srv.cfg.DB.User, srv.cfg.DB.Password, srv.cfg.DB.Database)
 	// initialize token system
-	tm, err := token.NewJWTMaker(srv.cfg.Token.Secret)
+	var err error
+	srv.tokenMaker, err = token.NewJWTMaker(srv.cfg.Token.Secret)
 	if err != nil {
 		log.Fatal("Token system initialization failed")
 	}
-	srv.tokenMaker = tm
 	// create a web server
 	srv.websrv = CreateWebServer(srv.cfg.WEB.Port)
 

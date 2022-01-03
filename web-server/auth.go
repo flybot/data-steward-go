@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/flybot/data-steward-go/common/token"
@@ -24,6 +23,10 @@ type SignupCredentials struct {
 
 func AuthRouter() chi.Router {
 	r := chi.NewRouter()
+
+	r.Post("/signup", Signup)
+	r.Post("/login", Login)
+
 	return r
 }
 
@@ -160,21 +163,12 @@ func Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func Refresh(w http.ResponseWriter, r *http.Request) {
-	bearer := r.Header.Get("Authorization")
-	if len(bearer) <= 7 || strings.ToUpper(bearer[0:6]) != "BEARER" {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	/*ts, _ := tokenAuth.Decode(bearer[7:])
-	cid, _ := ts.Get("id")
-	id := int(cid.(float64))*/
-	payload, err := srv.tokenMaker.VerifyToken(bearer)
+	/*payload, err := CheckToken(r)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
-	}
-
+	}*/
+	payload := r.Context().Value("tokenPayload").(*token.Payload)
 	// Create a token
 	regularToken, errT := srv.tokenMaker.CreateToken(payload.Username, payload.ID, time.Duration(srv.cfg.Token.Lifetime*int(time.Minute)), "regular")
 	if errT != nil {
@@ -186,3 +180,17 @@ func Refresh(w http.ResponseWriter, r *http.Request) {
 	// Send response
 	JsonResponse(w, response, http.StatusOK)
 }
+
+/*func CheckToken(r *http.Request) (token.Payload, error) {
+	bearer := r.Header.Get("Authorization")
+	if len(bearer) <= 7 || strings.ToUpper(bearer[0:6]) != "BEARER" {
+		return token.Payload{}, errors.New("Token not found")
+	}
+
+	payload, err := srv.tokenMaker.VerifyToken(bearer)
+	if err != nil {
+		return token.Payload{}, errors.New("Wrong token")
+	}
+
+	return *payload, nil
+}*/
